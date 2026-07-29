@@ -11,7 +11,7 @@ from torchvision import transforms
 from torchvision.models import efficientnet_b0
 from facenet_pytorch import MTCNN
 
-torch.set_grad_enabled(False)  # global: this app never needs gradients, saves memory everywhere
+torch.set_grad_enabled(False)
 
 device = torch.device('cpu')
 
@@ -33,7 +33,9 @@ def load_efficientnet(checkpoint_path):
     return m
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-gan_model = load_efficientnet(os.path.join(BASE_DIR, 'models', 'best_model.pth'))
+# Only the face-swap detector loads for this deployment — the GAN-image
+# detector is documented separately with its own results in the README/notebook,
+# to keep this live demo's memory footprint within free-tier limits.
 faceswap_model = load_efficientnet(os.path.join(BASE_DIR, 'models', 'best_model_faceswap.pth'))
 FAKE_IDX, REAL_IDX = 0, 1
 
@@ -50,25 +52,22 @@ def detect_and_crop_face(frame_bgr):
     return face_crop if face_crop.size > 0 else None
 
 
-def predict_image_both(input_image):
+def predict_image(input_image):
     img_np = np.array(input_image.convert('RGB'))
     img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
     cropped_face = detect_and_crop_face(img_bgr)
     face_for_model = Image.fromarray(cropped_face) if cropped_face is not None else input_image.convert('RGB')
     img_tensor = eval_transform(face_for_model).unsqueeze(0).to(device)
 
-    def run_one(model):
-        output = model(img_tensor)
-        probs = torch.softmax(output, dim=1)[0]
-        fake_p, real_p = probs[FAKE_IDX].item(), probs[REAL_IDX].item()
-        pred = 'FAKE' if fake_p > real_p else 'REAL'
-        conf = max(fake_p, real_p)
-        return f'{pred} ({conf*100:.1f}% confidence) | fake={fake_p:.3f}, real={real_p:.3f}'
+    output = faceswap_model(img_tensor)
+    probs = torch.softmax(output, dim=1)[0]
+    fake_p, real_p = probs[FAKE_IDX].item(), probs[REAL_IDX].item()
+    pred = 'FAKE' if fake_p > real_p else 'REAL'
+    conf = max(fake_p, real_p)
 
-    gan_text = run_one(gan_model)
-    fs_text = run_one(faceswap_model)
     face_preview = np.array(face_for_model)
-    return face_preview, gan_text, fs_text
+    label = f'{pred} ({conf*100:.1f}% confidence) | fake={fake_p:.3f}, real={real_p:.3f}'
+    return face_preview, label
 
 
 def predict_video(video_file):
@@ -78,7 +77,7 @@ def predict_video(video_file):
 
     timestamps, fake_probs = [], []
     frame_idx = 0
-    max_frames = 10  # reduced further — free-tier CPU is slow, keep this light
+    max_frames = 10
 
     while cap.isOpened() and len(timestamps) < max_frames:
         ret, frame = cap.read()
@@ -119,19 +118,17 @@ def predict_video(video_file):
     return chart_img, label
 
 
-with gr.Blocks(title='DeepFake Detector') as demo:
-    gr.Markdown('# DeepFake Detector\nTwo specialized models: one for AI-generated (GAN) portraits, one for real video face-swap forgery.\n\n*Note: this live demo shows predictions only. Full Grad-CAM explainability is available in the training notebook (linked in the README).*')
+with gr.Blocks(title='Face-Swap DeepFake Detector') as demo:
+    gr.Markdown('# Face-Swap DeepFake Detector\nTrained on FaceForensics++ (DeepFakes + FaceSwap methods). *Note: this live demo runs the face-swap model only, due to free-tier memory limits. A second GAN-generated image detector (99% accuracy) is documented separately in the project README/notebook.*')
 
-    with gr.Tab('Image — Compare Both Models'):
+    with gr.Tab('Image'):
         img_input = gr.Image(type='pil', label='Upload a face image')
-        face_preview = gr.Image(type='numpy', label='Detected Face (input to both models)')
-        with gr.Row():
-            gan_text = gr.Textbox(label='GAN-Image Detector Verdict')
-            fs_text = gr.Textbox(label='Face-Swap Detector Verdict')
+        face_preview = gr.Image(type='numpy', label='Detected Face')
+        img_text = gr.Textbox(label='Verdict')
         img_button = gr.Button('Analyze Image')
-        img_button.click(fn=predict_image_both, inputs=img_input, outputs=[face_preview, gan_text, fs_text])
+        img_button.click(fn=predict_image, inputs=img_input, outputs=[face_preview, img_text])
 
-    with gr.Tab('Video — Face-Swap Analysis'):
+    with gr.Tab('Video'):
         vid_input = gr.Video(label='Upload a video')
         vid_viz = gr.Image(type='numpy', label='Confidence Over Time')
         vid_text = gr.Textbox(label='Verdict')
