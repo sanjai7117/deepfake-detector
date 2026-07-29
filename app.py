@@ -32,7 +32,7 @@ def unnormalize(tensor):
 def load_efficientnet(checkpoint_path):
     m = efficientnet_b0(weights=None)
     m.classifier[1] = nn.Linear(m.classifier[1].in_features, 2)
-    m.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    m.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=False))
     m.to(device)
     m.eval()
     return m
