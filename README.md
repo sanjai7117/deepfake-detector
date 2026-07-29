@@ -26,7 +26,13 @@ Trained on the [140k Real and Fake Faces](https://www.kaggle.com/datasets/xhlulu
 | Test Accuracy | ~99% |
 | ROC-AUC | 0.9993 |
 
-Grad-CAM shows the model's attention concentrated on the central facial region (nose, mouth, eye area) for both real and fake predictions — consistent with where GAN texture/blending artifacts typically appear.
+**Confusion Matrix:**
+![GAN-Detector Confusion Matrix](assets/confusion_matrix.png)
+
+**ROC Curve:**
+![GAN-Detector ROC Curve](assets/roc_curve.png)
+
+Grad-CAM shows the model's attention concentrated on the central facial region (nose, mouth, eye area) for both real and fake predictions — consistent with where GAN texture/blending artifacts typically appear. *(Full Grad-CAM visuals for this model are in the [training notebook](https://www.kaggle.com/code/sanjai7117/deepfake-detection-effnet).)*
 
 ### Model 2 — Face-Swap Detector
 Trained on a subset of [FaceForensics++](https://github.com/ondyari/FaceForensics) (255 real + 255 manipulated videos, using the DeepFakes and FaceSwap methods specifically, since these perform identity replacement rather than expression reenactment). Split by video (not by frame) to prevent data leakage between train/val/test.
